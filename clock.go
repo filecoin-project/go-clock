@@ -325,8 +325,9 @@ func (t *Timer) Reset(d time.Duration) bool {
 	}
 
 	t.mock.mu.Lock()
-	t.next = t.mock.now.Add(d)
 	defer t.mock.mu.Unlock()
+
+	t.next = t.mock.now.Add(d)
 
 	registered := !t.stopped
 	if t.stopped {
@@ -346,6 +347,13 @@ func (t *internalTimer) Tick(now time.Time) {
 	defer gosched()
 
 	t.mock.mu.Lock()
+	defer t.mock.mu.Unlock()
+
+	// Check if we're stopped, we could have been de-registered after taking the lock and before
+	// calling tick.
+	if t.stopped {
+		return
+	}
 	if t.fn != nil {
 		// defer function execution until the lock is released, and
 		defer func() { go t.fn() }()
@@ -357,9 +365,8 @@ func (t *internalTimer) Tick(now time.Time) {
 		default:
 		}
 	}
-	t.mock.removeClockTimer((*internalTimer)(t))
 	t.stopped = true
-	t.mock.mu.Unlock()
+	t.mock.removeClockTimer((*internalTimer)(t))
 }
 
 // Ticker holds a channel that receives "ticks" at regular intervals.
@@ -408,14 +415,22 @@ type internalTicker Ticker
 
 func (t *internalTicker) Next() time.Time { return t.next }
 func (t *internalTicker) Tick(now time.Time) {
+	defer gosched()
+
+	t.mock.mu.Lock()
+	defer t.mock.mu.Unlock()
+
+	// Check if we're stopped, we could have been de-registered after taking the lock and before
+	// calling tick.
+	if t.stopped {
+		return
+	}
+
 	select {
 	case t.c <- now:
 	default:
 	}
-	t.mock.mu.Lock()
 	t.next = now.Add(t.d)
-	t.mock.mu.Unlock()
-	gosched()
 }
 
 // Sleep momentarily so that other goroutines can process.
