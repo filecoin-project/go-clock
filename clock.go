@@ -350,7 +350,12 @@ func (t *internalTimer) Tick(now time.Time) {
 		// defer function execution until the lock is released, and
 		defer func() { go t.fn() }()
 	} else {
-		t.c <- now
+		// it's possible to reset the clock without draining the channel. Don't block in
+		// that case.
+		select {
+		case t.c <- now:
+		default:
+		}
 	}
 	t.mock.removeClockTimer((*internalTimer)(t))
 	t.stopped = true
