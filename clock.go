@@ -51,7 +51,10 @@ func (c *clock) Until(t time.Time) time.Duration { return time.Until(t) }
 
 func (c *clock) Sleep(d time.Duration) { time.Sleep(d) }
 
-func (c *clock) Tick(d time.Duration) <-chan time.Time { return time.Tick(d) }
+func (c *clock) Tick(d time.Duration) <-chan time.Time {
+	//lint:ignore SA1015 we're intentionally replicating this API.
+	return time.Tick(d)
+}
 
 func (c *clock) Ticker(d time.Duration) *Ticker {
 	t := time.NewTicker(d)

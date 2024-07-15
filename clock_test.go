@@ -2,7 +2,6 @@ package clock
 
 import (
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -215,14 +214,9 @@ func TestClock_Timer_Reset_Unlock(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		select {
-		case <-timer.C:
-			timer.Reset(1 * time.Second)
-		}
-
-		select {
-		case <-timer.C:
-		}
+		<-timer.C
+		timer.Reset(1 * time.Second)
+		<-timer.C
 	}()
 
 	clock.Add(2 * time.Second)
@@ -784,6 +778,3 @@ func TestMock_AfterRace(t *testing.T) {
 		gosched()
 	}
 }
-
-func warn(v ...interface{})              { fmt.Fprintln(os.Stderr, v...) }
-func warnf(msg string, v ...interface{}) { fmt.Fprintf(os.Stderr, msg+"\n", v...) }
