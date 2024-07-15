@@ -109,7 +109,7 @@ func (m *Mock) WaitForAllTimers() time.Time {
 	defer m.mu.Unlock()
 
 	for len(m.timers) > 0 {
-		m.fireNext()
+		m.fireNextAndPause()
 	}
 
 	return m.now
@@ -127,7 +127,7 @@ func (m *Mock) WaitForAllTimersOnce() time.Time {
 
 	for len(m.timers) > 0 && len(scheduled) > 0 {
 		delete(scheduled, m.timers[0])
-		m.fireNext()
+		m.fireNextAndPause()
 	}
 
 	return m.now
@@ -155,7 +155,7 @@ func (m *Mock) Set(until time.Time) {
 
 func (m *Mock) set(until time.Time) {
 	for len(m.timers) > 0 && !m.timers[0].next.After(until) {
-		m.fireNext()
+		m.fireNextAndPause()
 	}
 
 	// Check to make sure we're still in the past, a concurrent call may have moved us forward.
@@ -173,6 +173,10 @@ func (m *Mock) fireNext() {
 	t := m.timers[0]
 	m.now = t.next
 	t.fire()
+}
+
+func (m *Mock) fireNextAndPause() {
+	m.fireNext()
 
 	// Pause for a bit to let other goroutines run.
 	m.mu.Unlock()
