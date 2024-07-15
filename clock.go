@@ -115,6 +115,36 @@ func (m *Mock) WaitForAllTimers() time.Time {
 	return m.now
 }
 
+// WaitForAllTimersOnce fires all timers at least once.
+func (m *Mock) WaitForAllTimersOnce() time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	scheduled := make(map[*mockTimer]struct{}, len(m.timers))
+	for _, t := range m.timers {
+		scheduled[t] = struct{}{}
+	}
+
+	for len(m.timers) > 0 && len(scheduled) > 0 {
+		delete(scheduled, m.timers[0])
+		m.fireNext()
+	}
+
+	return m.now
+}
+
+// RunNextTimer fires the next timer.
+func (m *Mock) RunNextTimer() time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.timers) > 0 {
+		m.fireNext()
+	}
+
+	return m.now
+}
+
 // Set sets the current time.
 func (m *Mock) Set(until time.Time) {
 	m.mu.Lock()
@@ -140,7 +170,7 @@ func (m *Mock) set(until time.Time) {
 }
 
 func (m *Mock) fireNext() {
-	t := heap.Pop(&m.timers).(*mockTimer)
+	t := m.timers[0]
 	m.now = t.next
 	t.fire()
 
@@ -170,16 +200,9 @@ func (m *Mock) AfterFunc(d time.Duration, f func()) *Timer {
 	if d <= 0 {
 		t.fire()
 	} else {
-		m.schedule(t)
+		heap.Push(&m.timers, t)
 	}
 	return &Timer{mocktime: t}
-}
-
-func (m *Mock) schedule(t *mockTimer) {
-	if t.index >= 0 {
-		panic("already scheduled!")
-	}
-	heap.Push(&m.timers, t)
 }
 
 // Now returns the current wall time on the mock clock.
@@ -214,7 +237,7 @@ func (m *Mock) Tick(d time.Duration) <-chan time.Time {
 // Ticker creates a new instance of Ticker.
 func (m *Mock) Ticker(d time.Duration) *Ticker {
 	if d <= 0 {
-		panic("ticker duration must be > 0")
+		panic("non-positive interval for Ticker.Reset")
 	}
 
 	m.mu.Lock()
@@ -233,7 +256,7 @@ func (m *Mock) Ticker(d time.Duration) *Ticker {
 		index: -1,
 		next:  m.now.Add(d),
 	}
-	m.schedule(t)
+	heap.Push(&m.timers, t)
 	return &Ticker{C: ch, mocktime: t}
 }
 
@@ -257,7 +280,7 @@ func (m *Mock) Timer(d time.Duration) *Timer {
 	if d <= 0 {
 		t.fire()
 	} else {
-		m.schedule(t)
+		heap.Push(&m.timers, t)
 	}
 	return &Timer{C: ch, mocktime: t}
 }
@@ -303,7 +326,6 @@ func (t *Timer) Reset(d time.Duration) bool {
 	if t.realtime != nil {
 		return t.realtime.Reset(d)
 	}
-
 	return t.mocktime.reset(d)
 }
 
@@ -349,14 +371,18 @@ type mockTimer struct {
 }
 
 func (t *mockTimer) fire() {
-	now := t.mock.now
-
 	if t.d != nil {
-		t.next = now.Add(*t.d)
-		t.mock.schedule(t)
+		t.next = t.mock.now.Add(*t.d)
+		if t.index < 0 {
+			heap.Push(&t.mock.timers, t)
+		} else {
+			heap.Fix(&t.mock.timers, t.index)
+		}
+	} else if t.index >= 0 {
+		heap.Remove(&t.mock.timers, t.index)
 	}
 
-	(t.fn)(now)
+	(t.fn)(t.mock.now)
 }
 
 func (t *mockTimer) stop() bool {
@@ -366,7 +392,6 @@ func (t *mockTimer) stop() bool {
 		return false
 	}
 	heap.Remove(&t.mock.timers, t.index)
-	t.index = -1
 	return true
 }
 
@@ -375,18 +400,22 @@ func (t *mockTimer) reset(dur time.Duration) bool {
 	defer t.mock.mu.Unlock()
 
 	if t.d != nil {
+		if dur <= 0 {
+			panic("non-positive interval for Ticker.Reset")
+		}
 		*t.d = dur
 	}
 
 	t.next = t.mock.now.Add(dur)
-
-	if t.index < 0 {
-		heap.Push(&t.mock.timers, t)
-		return false
-	} else {
+	wasPending := t.index >= 0
+	if dur <= 0 {
+		t.fire()
+	} else if wasPending {
 		heap.Fix(&t.mock.timers, t.index)
-		return true
+	} else {
+		heap.Push(&t.mock.timers, t)
 	}
+	return wasPending
 }
 
 // Sleep momentarily so that other goroutines can process.
