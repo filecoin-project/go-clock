@@ -10,7 +10,7 @@ import (
 // Ensure that WithDeadline is cancelled when deadline exceeded.
 func TestMock_WithDeadline(t *testing.T) {
 	m := NewMock()
-	ctx, _ := m.WithDeadline(context.Background(), m.Now().Add(time.Second))
+	ctx, _ := m.WithDeadline(t.Context(), m.Now().Add(time.Second))
 	m.Add(time.Second)
 	select {
 	case <-ctx.Done():
@@ -25,7 +25,7 @@ func TestMock_WithDeadline(t *testing.T) {
 // Ensure that WithDeadline does nothing when the deadline is later than the current deadline.
 func TestMock_WithDeadlineLaterThanCurrent(t *testing.T) {
 	m := NewMock()
-	ctx, _ := m.WithDeadline(context.Background(), m.Now().Add(time.Second))
+	ctx, _ := m.WithDeadline(t.Context(), m.Now().Add(time.Second))
 	ctx, _ = m.WithDeadline(ctx, m.Now().Add(10*time.Second))
 	m.Add(time.Second)
 	select {
@@ -41,7 +41,7 @@ func TestMock_WithDeadlineLaterThanCurrent(t *testing.T) {
 // Ensure that WithDeadline cancel closes Done channel with context.Canceled error.
 func TestMock_WithDeadlineCancel(t *testing.T) {
 	m := NewMock()
-	ctx, cancel := m.WithDeadline(context.Background(), m.Now().Add(time.Second))
+	ctx, cancel := m.WithDeadline(t.Context(), m.Now().Add(time.Second))
 	cancel()
 	select {
 	case <-ctx.Done():
@@ -56,8 +56,9 @@ func TestMock_WithDeadlineCancel(t *testing.T) {
 // Ensure that WithDeadline closes child contexts after it was closed.
 func TestMock_WithDeadlineCancelledWithParent(t *testing.T) {
 	m := NewMock()
-	parent, cancel := context.WithCancel(context.Background())
+	parent, cancel := context.WithCancel(t.Context())
 	ctx, _ := m.WithDeadline(parent, m.Now().Add(time.Second))
+
 	cancel()
 	select {
 	case <-ctx.Done():
@@ -72,7 +73,7 @@ func TestMock_WithDeadlineCancelledWithParent(t *testing.T) {
 // Ensure that WithDeadline cancelled immediately when deadline has already passed.
 func TestMock_WithDeadlineImmediate(t *testing.T) {
 	m := NewMock()
-	ctx, _ := m.WithDeadline(context.Background(), m.Now().Add(-time.Second))
+	ctx, _ := m.WithDeadline(t.Context(), m.Now().Add(-time.Second))
 	select {
 	case <-ctx.Done():
 		if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -86,7 +87,7 @@ func TestMock_WithDeadlineImmediate(t *testing.T) {
 // Ensure that WithTimeout is cancelled when deadline exceeded.
 func TestMock_WithTimeout(t *testing.T) {
 	m := NewMock()
-	ctx, _ := m.WithTimeout(context.Background(), time.Second)
+	ctx, _ := m.WithTimeout(t.Context(), time.Second)
 	m.Add(time.Second)
 	select {
 	case <-ctx.Done():

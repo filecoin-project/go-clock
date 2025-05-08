@@ -7,29 +7,37 @@ import (
 	"time"
 )
 
+// WithTimeout is a convenience function that calls WithDeadline with the current time plus the timeout duration.
 func (m *Mock) WithTimeout(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 	return m.WithDeadline(parent, m.Now().Add(timeout))
 }
 
+// WithDeadline nolint: revive.
 func (m *Mock) WithDeadline(parent context.Context, deadline time.Time) (context.Context, context.CancelFunc) {
 	if cur, ok := parent.Deadline(); ok && cur.Before(deadline) {
 		// The current deadline is already sooner than the new one.
 		return context.WithCancel(parent)
 	}
+
 	ctx := &timerCtx{clock: m, parent: parent, deadline: deadline, done: make(chan struct{})}
 	propagateCancel(parent, ctx)
+
 	dur := m.Until(deadline)
 	if dur <= 0 {
 		ctx.cancel(context.DeadlineExceeded) // deadline has already passed
+
 		return ctx, func() {}
 	}
+
 	ctx.Lock()
 	defer ctx.Unlock()
+
 	if ctx.err == nil {
 		ctx.timer = m.AfterFunc(dur, func() {
 			ctx.cancel(context.DeadlineExceeded)
 		})
 	}
+
 	return ctx, func() { ctx.cancel(context.Canceled) }
 }
 
@@ -38,6 +46,7 @@ func propagateCancel(parent context.Context, child *timerCtx) {
 	if parent.Done() == nil {
 		return // parent is never canceled
 	}
+
 	go func() {
 		select {
 		case <-parent.Done():
@@ -48,25 +57,26 @@ func propagateCancel(parent context.Context, child *timerCtx) {
 }
 
 type timerCtx struct {
-	sync.Mutex
-
+	deadline time.Time
 	clock    Clock
 	parent   context.Context
-	deadline time.Time
+	err      error
 	done     chan struct{}
-
-	err   error
-	timer *Timer
+	timer    *Timer
+	sync.Mutex
 }
 
 func (c *timerCtx) cancel(err error) {
 	c.Lock()
 	defer c.Unlock()
+
 	if c.err != nil {
 		return // already canceled
 	}
+
 	c.err = err
 	close(c.done)
+
 	if c.timer != nil {
 		c.timer.Stop()
 		c.timer = nil
