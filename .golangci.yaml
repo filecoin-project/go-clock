@@ -1,0 +1,31 @@
+version: "2"
+run:
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+linters:
+  default: all
+
+  disable: # all these produce failures right now
+    - containedctx
+    - exhaustruct
+    - funcorder
+    - interfacebloat
+    - ireturn
+    - nonamedreturns
+    - paralleltest
+    - testpackage
+    - varnamelen
+
+  settings:
+    gocyclo:
+      min-complexity: 58
+    govet:
+      enable-all: true
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    generated: lax
+    rules:
+      - path: (.+)\.go$
+        text: unused-parameter
